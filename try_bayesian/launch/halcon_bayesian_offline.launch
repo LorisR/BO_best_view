@@ -1,0 +1,25 @@
+<launch>
+
+  <include file="$(find panda_moveit_config)/launch/demo.launch" />
+
+  <node name="matching_node" pkg="try_bayesian" type="halcon_bo" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="planning_node" pkg="try_bayesian" type="planner_offline.py" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+  
+  <node name="open_3d_node" pkg="try_bayesian" type="HPR_node.py" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="normalizer_node" pkg="try_bayesian" type="normalizer.py" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="bayesian_opt_node" pkg="try_bayesian" type="try_opt" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+</launch>

@@ -1,0 +1,248 @@
+#!/home/loris/anaconda3/envs/py3/bin/python
+
+
+import cv2 as cv
+from mpl_toolkits import mplot3d
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt 
+import rospy
+
+from sensor_msgs.msg import PointCloud2
+import std_msgs.msg
+import sensor_msgs.point_cloud2 as pcl2
+
+
+import open3d as o3d
+import numpy as np
+import sys
+import time
+from std_msgs.msg import String
+from beginner_tutorials.msg import coord_msg_checked
+from try_bayesian.msg import to_bayesian
+import re
+
+#CHANGE ROOT
+root = '/home/loris'
+
+def ModelInitialization(modelname, model_downsampling):
+    
+    print('INITIALIZING MODEL')
+    
+    # cloud_points = cv.ppf_match_3d.loadPLYSimple("%s.ply" % modelname,1)
+    # ves = cloud_points    
+    pcd = o3d.io.read_point_cloud("%s" % modelname)
+    # pc1 = np.asarray(pcd.points, 'float32') 
+    # pc2 = np.asarray(pcd.normals, 'float32') 
+    downpcd = pcd.voxel_down_sample(voxel_size=model_downsampling) #0.014
+    pc1 = np.asarray(downpcd.points, 'float32') 
+    pc2 = np.asarray(downpcd.normals, 'float32') 
+    pc = np.hstack((pc1,pc2))
+    return pc
+
+
+def ModelTraining (pc, training_completeness, training_keypoints):
+    
+    detector = cv.ppf_match_3d_PPF3DDetector(training_completeness, training_keypoints)   #0.025, 0.05 standard #L 0.0025, 0.0025
+    # PRIMO PARAMETRO : abbasso = training + completo
+    # SECONDO PARAMETRO : alzo = meno features sono considerate
+    print('MODEL TRAINING IN PROGRESS')
+    start_time = time.time()
+    detector.trainModel(pc)
+    end_time = time.time()
+    time_training = int(end_time-start_time)
+    print('TRAINING COMPLETED in %f secs' %time_training)
+    pub2.publish('MatchingFinished')
+    
+    #cv.ppf_match_3d.ppf_match_3d.write()
+    return detector
+
+
+def SurfaceMatching(pc, pcTest, detector, matching_completeness, matching_keypoints):
+    
+    start_time = time.time()
+    N = 2
+    print('MATCHING IN PROGRESS')
+    results = detector.match(pcTest, matching_completeness, matching_keypoints) #0.025 # L 0.003, 0.003
+    
+    print('PERFORMING ICP')
+    icp = cv.ppf_match_3d_ICP(300,0.001) #100 standard
+    _, results = icp.registerModelToScene(pc, pcTest, results[:N])
+    
+    print("POSSIBLE POSES: ")
+    for i, result in enumerate(results):
+        #result.printPose()
+        print("\n-- Pose to Model Index %d: NumVotes = %d, Residual = %f\n%s\n" % (result.modelIndex, result.numVotes, result.residual, result.pose))
+        if i == 0:   
+            pct1 = cv.ppf_match_3d.transformPCPose(pc, result.pose)
+            pose1 = result.pose
+            residual1 = result.residual
+            Votes1 = result.numVotes
+        if i == 1:   
+            pct2 = cv.ppf_match_3d.transformPCPose(pc, result.pose)
+            pose2 = result.pose
+            residual2 = result.residual
+            Votes2 = result.numVotes
+
+    residual = np.array((residual1, residual2), 'float32')
+    end_time = time.time()
+    time_matching = int(end_time-start_time)
+    print('MATCHING COMPLETED in %f secs' %time_matching)
+
+    return pose1, pose2, pct1, pct2, Votes1, Votes2, residual
+
+def SceneNormalsCalculation (scenename, scene_normal_radius, scene_normal_neighboors):
+    
+    print('CALCULATING SCENE NORMALS')
+
+    pcd = o3d.io.read_point_cloud("%s" % scenename)
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=scene_normal_radius, 
+                                                                           max_nn=scene_normal_neighboors)) #radius=0.01, max_nn=80
+    downpcd = pcd.voxel_down_sample(voxel_size=0.01)
+    pcTest_d = np.asarray(downpcd.points, 'float32')
+    PCNormals = np.asarray(pcd.normals, 'float32')
+    PCPoints = np.asarray(pcd.points, 'float32')
+    pcTest= np.hstack((PCPoints, PCNormals))
+    
+    return pcTest, pcTest_d
+
+
+def DownSamplingandPlot(pct1, pct2, pcTest_d, vs, residual):
+    
+     pcd = o3d.geometry.PointCloud()
+     pcd.points = o3d.utility.Vector3dVector(pct1[:,:3])
+     downpcd = pcd.voxel_down_sample(voxel_size=vs)
+     pct1_d = np.asarray(downpcd.points, 'float32')
+     
+     pcd = o3d.geometry.PointCloud()
+     pcd.points = o3d.utility.Vector3dVector(pct2[:,:3])
+     downpcd = pcd.voxel_down_sample(voxel_size=vs)
+     pct2_d = np.asarray(downpcd.points, 'float32')
+               
+     fig = plt.figure()
+     ax = fig.add_subplot(111, projection='3d')
+     fig.set_size_inches(10, 8)
+     ax.scatter(pcTest_d[:,0], pcTest_d[:,1], pcTest_d[:,2], s=0.5)
+     if residual[0]<1:
+         ax.scatter(pct1_d[:,0], pct1_d[:,1], pct1_d[:,2], s=1.5, c='r')
+     if residual[1]<1:
+        ax.scatter(pct2_d[:,0], pct2_d[:,1], pct2_d[:,2], s=0.5, c='g')
+     plt.show()
+    
+     return 
+ 
+def taglia_stringa(pattern,stringa,tipo):
+        ''' se il valore da leggere è una stringa mettere testo altrimenti numero'''
+        substring = re.search(pattern, stringa).group(1)
+        if tipo =="numero":
+            return float(substring)
+        elif tipo == "testo":
+            return substring
+
+
+if __name__ == '__main__':
+      
+        print("MATHCER NODE\n")
+        rospy.init_node('Pose_Estimation_Algorithm', anonymous=True)
+        messaggio_ricevuto = coord_msg_checked()
+
+        pub2 = rospy.Publisher('Training_Finished', String, queue_size=10)
+
+        pub_bay = rospy.Publisher('halcon_to_bayesian', to_bayesian, queue_size=10)
+        bayesian = to_bayesian()
+        
+        #file = np.array((0,0,0,0,0), 'float32')
+        j=0
+        i=0
+        
+        param_file_name = root+"/ply_and_stl/param.txt"
+        file = open(param_file_name,"r")
+        parameters = file.readlines()
+        model_downsampling  = taglia_stringa("{(.*?)}",parameters[21],"numero") 
+        scene_downsampling  = taglia_stringa("{(.*?)}",parameters[22],"numero") 
+        scene_normal_radius = taglia_stringa("{(.*?)}",parameters[35],"numero") 
+        scene_normal_neighboors = int(taglia_stringa("{(.*?)}",parameters[36],"numero"))
+        training_completeness = taglia_stringa("{(.*?)}",parameters[23],"numero") 
+        training_keypoints = taglia_stringa("{(.*?)}",parameters[24],"numero") 
+        matching_completeness = taglia_stringa("{(.*?)}",parameters[25],"numero")
+        matching_keypoints = taglia_stringa("{(.*?)}",parameters[26],"numero")
+        scenename  = taglia_stringa("{(.*?)}",parameters[28],"testo") 
+        modelname  = taglia_stringa("{(.*?)}",parameters[27],"testo") 
+        file.close()
+        
+        try:
+            
+
+            # scenename = root+'/ply_and_stl/scene_and_model/Robot_cut.ply'
+            # modelname = root+'/ply_and_stl/scene_and_model/pinza_bin.ply'
+            
+            pc = ModelInitialization(modelname, model_downsampling)
+            detector = ModelTraining(pc, training_completeness, training_keypoints)
+            vs = 0.005
+            
+            
+            while not rospy.is_shutdown() :
+
+                messaggio_ricevuto = rospy.wait_for_message('halcon_consensus', coord_msg_checked)
+                                     
+                pcTest, pcTest_d = SceneNormalsCalculation(scenename, scene_normal_radius, scene_normal_neighboors)
+                
+                pose1, pose2, pct1, pct2, Votes1, Votes2, residual = SurfaceMatching(pc, pcTest, detector, matching_completeness, matching_keypoints)
+                
+                Votes1 = ((Votes1+Votes2)/2)/500
+                if Votes1>0.99:
+                    Votes1=0.99
+                    print("OUT of BOUNDS")
+                print("POSE SCORE: %1.2f" %Votes1)
+                
+            # SE VUOI PLOTTARE A SCHERMO PER CONTROLLARE LA POSA CHE SIA EFFETTIVAMENTE GIUSTA
+               # DownSamplingandPlot(pct1, pct2, pcTest_d, vs, residual)
+                 
+                
+                if j==0:
+                     
+                      file = np.matrix(([messaggio_ricevuto.x, 
+                                        messaggio_ricevuto.y, 
+                                        messaggio_ricevuto.z, 
+                                        messaggio_ricevuto.qx, 
+                                        messaggio_ricevuto.qy, 
+                                        messaggio_ricevuto.qz, 
+                                        messaggio_ricevuto.qw, 
+                                        messaggio_ricevuto.check, 
+                                        Votes1]), 'float32')
+                      np.savetxt('/home/loris/ply_and_stl/pos_score_PPF.txt', 
+                                file, fmt='%1.5f', 
+                                header='x       y        z       qx      qy      qz       qw    reach    score',
+                                delimiter='\t')
+    
+                else:
+                      file1 = np.matrix(([messaggio_ricevuto.x, 
+                                        messaggio_ricevuto.y, 
+                                        messaggio_ricevuto.z,
+                                        messaggio_ricevuto.qx, 
+                                        messaggio_ricevuto.qy, 
+                                        messaggio_ricevuto.qz, 
+                                        messaggio_ricevuto.qw, 
+                                        messaggio_ricevuto.check, 
+                                        Votes1]), 'float32')
+                      file = np.vstack([file, file1])
+                      np.savetxt('/home/loris/ply_and_stl/pos_score_PPF.txt',
+                                file, fmt='%1.5f',
+                                header='x       y        z       qx      qy      qz       qw    reach    score',
+                                delimiter='\t')
+    
+                print('--------------------------------------------------------------')
+                
+                bayesian.score = Votes1
+                bayesian.check = messaggio_ricevuto.check
+
+                j=1
+                i=i+1
+
+                pub_bay.publish(bayesian)
+
+
+
+        except rospy.ROSInterruptException():
+            pass
+
+ 
