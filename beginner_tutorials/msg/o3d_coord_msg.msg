@@ -1,0 +1,12 @@
+float64 x
+float64 y
+float64 z
+float32 a1
+float32 a2
+float32 a3
+float32 a4
+float32 a5
+float32 a6
+float32 a7
+float32 a8
+float32 a9

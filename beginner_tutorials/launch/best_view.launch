@@ -1,0 +1,23 @@
+<launch>
+
+  <include file="$(find panda_moveit_config)/launch/demo.launch" />
+
+<node name="planning_node" pkg="beginner_tutorials" type="planner_offline.py" respawn="false" output="screen"
+
+launch-prefix="gnome-terminal --command"> 
+  </node>
+  <node name="sphere_generator_node" pkg="beginner_tutorials" type="sphere_generator.py" respawn="false" output="screen"
+
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="open_3d_node" pkg="beginner_tutorials" 
+type="HPR_node.py" respawn="false" output="screen"
+
+launch-prefix="gnome-terminal --command"> 
+  </node>
+  <node name="Halcon_matching_node" pkg="beginner_tutorials" type="prova_cod_listener" respawn="false" output="screen"
+launch-prefix="gnome-terminal --command"> 
+  </node>
+
+</launch>
