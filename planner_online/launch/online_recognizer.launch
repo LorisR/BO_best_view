@@ -1,0 +1,23 @@
+<launch>
+
+ <include file = "$(find panda_moveit_config)/launch/demo.launch" />
+
+  <node name="octomap_d415" pkg="planner_online" type="octomap_d415.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="pose_online" pkg="planner_online" type="pose_online.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="tf" pkg="planner_online" type="publish_transform.py" respawn="false" output="screen"> 
+  </node>
+
+  <node name="pointcloud_d415" pkg="planner_online" type="pointcloud_d415_recognizer.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="mgp_online" pkg="planner_online" type="mgp_online_recognition.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="reader" pkg="planner_online" type="reader.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+</launch>

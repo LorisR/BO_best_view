@@ -1,0 +1,15 @@
+<launch>
+
+ <include file = "$(find panda_moveit_config)/launch/demo.launch" />
+
+  <node name="octomap_d415" pkg="planner_online" type="oct_pc_d415.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="pose_online" pkg="planner_online" type="mgp_pc_assembly.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+  <node name="pointcloud_d415" pkg="planner_online" type="ply_matcher.py" respawn="false" output="screen" launch-prefix="gnome-terminal --command"> 
+  </node>
+
+
+</launch>
